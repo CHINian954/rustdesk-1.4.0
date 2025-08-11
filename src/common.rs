@@ -1231,61 +1231,11 @@ pub fn make_empty_dirs_response_to_json(res: &ReadEmptyDirsResponse) -> String {
 /// 1. Try to send the url scheme from ipc.
 /// 2. If failed to send the url scheme, we open a new main window to handle this url scheme.
 pub fn handle_url_scheme(url: String) {
-    // 提取ID和密码
-    let (id, password) = extract_id_and_password(url.clone());
-    
-    // 如果提取到了ID和密码，则使用它们进行连接
-    if !id.is_empty() {
-        #[cfg(not(target_os = "ios"))]
-        if let Err(err) = crate::ipc::send_connect_command(id.clone(), password.clone()) {
-            log::debug!("Failed to send via IPC, starting new instance");
-            let mut args = vec!["--connect".to_string(), id];
-            
-            // 如果密码不为空，则添加密码参数
-            if !password.is_empty() {
-                args.push("--password".to_string());
-                args.push(password);
-            }
-            
-            let _ = crate::run_me(args);
-        }
-        return;
-    }
-    
-    // 原有的处理代码（如果没有提取到ID和密码）
     #[cfg(not(target_os = "ios"))]
     if let Err(err) = crate::ipc::send_url_scheme(url.clone()) {
         log::debug!("Send the url to the existing flutter process failed, {}. Let's open a new program to handle this.", err);
         let _ = crate::run_me(vec![url]);
     }
-}
-
-// 从URL中提取ID和密码的辅助函数
-fn extract_id_and_password(url: String) -> (String, String) {
-    let prefix = get_uri_prefix();
-    if !url.starts_with(&prefix) {
-        return ("".to_string(), "".to_string());
-    }
-    
-    let content = &url[prefix.len()..];
-    
-    // 支持多种格式：
-    // 1. rustdesk://id:password
-    // 2. rustdesk://id?password=xxx
-    if content.contains(":") {
-        let parts: Vec<&str> = content.split(":").collect();
-        if parts.len() >= 2 {
-            return (parts[0].to_string(), parts[1].to_string());
-        }
-    } else if content.contains("?password=") {
-        let parts: Vec<&str> = content.split("?password=").collect();
-        if parts.len() >= 2 {
-            return (parts[0].to_string(), parts[1].to_string());
-        }
-    }
-    
-    // 如果没有密码，则返回ID和空密码
-    (content.to_string(), "".to_string())
 }
 
 #[inline]
@@ -1954,7 +1904,7 @@ pub async fn test_ipv6() -> Option<tokio::task::JoinHandle<()>> {
                         // only use the first one, on mac, the first one is the stable
                         // one, the last one is the temporary one. The middle ones are deperecated.
                         *PUBLIC_IPV6_ADDR.lock().unwrap() =
-                            Some((SocketAddr::from((ip, 0)), Instant::now())));
+                            Some((SocketAddr::from((ip, 0)), Instant::now()));
                         log::debug!("Found public IPv6 address locally: {}", ip);
                         break;
                     }
@@ -2211,18 +2161,4 @@ mod tests {
             Duration::from_nanos(0)
         );
     }
-}
-
-pub fn send_connect_command(id: String, password: String) -> ResultType<()> {
-    let mut misc = Misc::new();
-    misc.set_connect_request(ConnectRequest {
-        id,
-        password,
-        ..Default::default()
-    });
-    
-    let mut msg_out = Message::new();
-    msg_out.set_misc(misc);
-    
-    send(msg_out)
 }
